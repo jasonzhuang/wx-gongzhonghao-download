@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>配置微信读书登录 - WeChat Download API</title>
+  <style>
+    body{margin:0;background:#f5f7fa;color:#1f2937;font:15px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+    main{max-width:720px;margin:48px auto;padding:0 20px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:28px;box-shadow:0 8px 30px rgba(0,0,0,.05)}
+    h1{font-size:24px;margin:0 0 8px}h2{font-size:16px;margin:24px 0 8px}.muted{color:#6b7280}.warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:12px 14px;color:#9a3412}
+    ol{padding-left:22px}code{background:#f3f4f6;border-radius:4px;padding:2px 5px}label{display:block;font-weight:600;margin:16px 0 6px}
+    textarea,input{width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;font:13px/1.5 monospace}textarea{min-height:100px;resize:vertical}
+    button,a.btn{display:inline-block;border:0;border-radius:8px;padding:10px 18px;background:#1677ff;color:#fff;text-decoration:none;font-weight:600;cursor:pointer;margin-top:18px}button:disabled{opacity:.55}
+    #result{display:none;margin-top:16px;padding:10px 12px;border-radius:8px}.ok{display:block!important;background:#ecfdf5;color:#166534}.err{display:block!important;background:#fef2f2;color:#991b1b}
+    .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.actions a{color:#1677ff}
+    .qrbox{display:none;margin:18px 0 4px;text-align:center;border:1px solid #e5e7eb;border-radius:10px;padding:16px;background:#fafafa}.qrbox img{width:240px;height:240px;display:block;margin:0 auto 8px}.qrhint{color:#6b7280;font-size:13px}
+  </style>
+</head>
+<body><main><div class="card">
+  <h1>配置微信读书登录</h1>
+  <p class="muted">文章列表已从公众号后台迁移到微信读书 Web。凭证只保存在本机 <code>data/.weread_credentials.json</code>。</p>
+  <div class="warn">Cookie 属于登录凭证，请勿截图、上传或发到聊天中。扫码完成后，凭证只会保存在本机。</div>
+
+  <h2>扫码刷新 Cookie</h2>
+  <p class="muted">扫码可刷新普通 Web Cookie；如果本机已有同一账号的文章列表票据，服务会一并尝试续期。首次配置或遇到 <code>-2041</code> 时，请使用下方的 <code>/web/mp/articles</code> 完整 cURL。</p>
+  <div class="actions"><button id="qrStart" onclick="startQrLogin()">生成二维码</button><button id="qrCancel" onclick="cancelQrLogin()" style="display:none;background:#6b7280">取消</button></div>
+  <div id="qrbox" class="qrbox"><img id="qrimage" alt="微信读书扫码登录二维码"><div id="qrstatus" class="qrhint">请使用微信扫码</div><div id="otpbox" style="display:none"><input id="otp" inputmode="numeric" maxlength="4" placeholder="扫码后输入微信显示的四位验证码"><button onclick="pollQr(true)">提交验证码</button></div></div>
+
+  <h2>配置文章列表凭证（推荐）</h2>
+  <ol>
+    <li>在微信读书 App 中关注目标公众号，使其出现在书架。</li>
+    <li>浏览器登录 <code>weread.qq.com</code>，打开任一公众号文章列表。</li>
+    <li>在开发者工具 Network 中找到 <code>/web/mp/articles</code> 请求，右键选择“Copy as cURL”。不要选择其他请求。</li>
+    <li>只在下面的本机表单中粘贴完整 cURL。服务会提取其中的 Cookie 和文章列表票据，在线校验成功后才保存。</li>
+  </ol>
+
+  <label for="curl">/web/mp/articles 完整 cURL</label>
+  <textarea id="curl" autocomplete="off" spellcheck="false" placeholder="在 /web/mp/articles 请求上右键“Copy as cURL”后粘贴；仅本机处理，勿发到聊天中"></textarea>
+
+  <div class="actions"><button id="save" onclick="saveCredentials()">校验并保存</button><a href="/admin.html">返回管理面板</a></div>
+  <div id="result"></div>
+</div></main>
+<script>
+async function saveCredentials(){
+  var button=document.getElementById('save'), result=document.getElementById('result');
+  var curl=document.getElementById('curl').value.trim();
+  if(!curl){result.className='err';result.textContent='请粘贴浏览器“Copy as cURL”生成的完整请求';return}
+  button.disabled=true;button.textContent='校验中…';result.className='';result.style.display='none';
+  try{
+    var response=await fetch('/api/login/manual',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({curl:curl})});
+    var data=await response.json();
+    result.className=data.success?'ok':'err';result.textContent=data.message||(data.success?'保存成功':'保存失败');
+    if(data.success){document.getElementById('curl').value=''}
+  }catch(error){result.className='err';result.textContent='请求失败: '+error.message}
+  finally{button.disabled=false;button.textContent='校验并保存'}
+}
+
+var qrSession='', qrTimer=null, qrBusy=false;
+function setQrStatus(text){document.getElementById('qrstatus').textContent=text}
+async function startQrLogin(){
+  cancelQrLogin();
+  var start=document.getElementById('qrStart'), cancel=document.getElementById('qrCancel'), box=document.getElementById('qrbox');
+  start.disabled=true;start.textContent='生成中…';
+  try{
+    var response=await fetch('/api/login/qr/start',{method:'POST'}), data=await response.json();
+    if(!data.success) throw new Error(data.message||'创建扫码会话失败');
+    qrSession=data.data.session_id; box.style.display='block'; cancel.style.display='inline-block';
+    document.getElementById('qrimage').src='/api/login/qr/image?session_id='+encodeURIComponent(qrSession);
+    setQrStatus('请使用微信扫描二维码并确认'); qrTimer=setInterval(function(){pollQr(false)},1200);
+  }catch(e){var result=document.getElementById('result');result.className='err';result.textContent=e.message}
+  finally{start.disabled=false;start.textContent='重新生成二维码'}
+}
+function cancelQrLogin(){if(qrTimer){clearInterval(qrTimer);qrTimer=null}qrSession='';document.getElementById('qrCancel').style.display='none'}
+async function pollQr(withOtp){
+  if(!qrSession||qrBusy)return; qrBusy=true;
+  try{
+    var otp=withOtp?document.getElementById('otp').value.trim():'';
+    var response=await fetch('/api/login/qr/poll?session_id='+encodeURIComponent(qrSession)+'&otp='+encodeURIComponent(otp),{method:'POST'}), data=await response.json();
+    if(data.status==='waiting'){setQrStatus(data.message)}
+    else if(data.status==='need_otp'){document.getElementById('otpbox').style.display='block';setQrStatus(data.message);if(qrTimer){clearInterval(qrTimer);qrTimer=null}}
+    else if(data.status==='success'){cancelQrLogin();document.getElementById('qrbox').style.display='none';var result=document.getElementById('result');result.className='ok';result.textContent=data.message}
+    else if(data.status==='expired'||data.status==='error'){cancelQrLogin();setQrStatus(data.message);var result=document.getElementById('result');result.className='err';result.textContent=data.message}
+  }catch(e){setQrStatus('轮询失败：'+e.message)}finally{qrBusy=false}
+}
+</script></body></html>
