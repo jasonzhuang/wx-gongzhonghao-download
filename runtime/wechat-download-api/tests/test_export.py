@@ -34,7 +34,7 @@ class ExportCountTests(unittest.TestCase):
 
 
 class HistoryExportPreflightTests(unittest.IsolatedAsyncioTestCase):
-    async def test_large_range_is_counted_before_content_fetch(self):
+    async def test_large_range_still_fetches_content_when_over_100(self):
         articles = [
             {
                 "aid": str(i),
@@ -49,13 +49,17 @@ class HistoryExportPreflightTests(unittest.IsolatedAsyncioTestCase):
             async def list_articles(self, fakeid, offset):
                 return articles, None
 
-        enrich = AsyncMock()
+        async def enrich_content(batch, client):
+            return ([{**item, "content": "<p>正文</p>"} for item in batch], [])
+
+        enrich = AsyncMock(side_effect=enrich_content)
         with (
             patch("utils.weread_client.WereadClient", return_value=FakeClient()),
             patch("routes.admin.rss_store.get_subscription", return_value={"fakeid": "MP_WXS_1"}),
             patch("routes.admin.rss_store.get_history_cursor", return_value={"complete": False, "offset": 0}),
             patch("routes.admin.rss_store.save_articles", return_value=101),
             patch("routes.admin.rss_store.update_history_cursor"),
+            patch("routes.admin.rss_store.get_export_articles", return_value=[]),
             patch("utils.rss_poller.rss_poller._enrich_articles_content", enrich),
         ):
             result = await _fetch_history_internal(
@@ -63,8 +67,9 @@ class HistoryExportPreflightTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(result[3], 101)
+        self.assertEqual(result[4], 101)
         self.assertTrue(result[8])
-        enrich.assert_not_awaited()
+        self.assertEqual(enrich.await_count, 11)
 
     async def test_custom_end_date_filters_scanned_articles(self):
         articles = [

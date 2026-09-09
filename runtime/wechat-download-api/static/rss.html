@@ -1059,12 +1059,15 @@
                     var exportable = Number(data.exportable_count || 0);
                     var failed = Math.max(Number(data.content_failed_count || 0), expected - exportable, 0);
                     var rangeInfo = '已确认 ' + oldest + ' 至 ' + newest + ' 共 ' + expected + ' 篇';
+                    // 暂停超过 100 篇时的提示和终止逻辑，允许继续全量补抓；保留便于以后恢复。
+                    /*
                     if (data.batch_required || expected > EXPORT_BATCH_LIMIT) {
                         rangeResult.textContent = rangeInfo + '，超过单次建议上限 ' + EXPORT_BATCH_LIMIT + ' 篇。请缩小日期范围，分批导出。';
                         showToast('文章超过 ' + EXPORT_BATCH_LIMIT + ' 篇，请按日期分批导出', 7000);
                         formatButtons.forEach(function(btn) { btn.disabled = false; });
                         return;
                     }
+                    */
                     rangeInfo += '，正文可导出 ' + exportable + ' 篇';
                     rangeResult.textContent = rangeInfo + (failed ? '，仍有 ' + failed + ' 篇正文未成功获取。' : '。');
                     if (!expected) throw new Error('该时间范围内没有文章');
@@ -1085,11 +1088,14 @@
                 var articleCount = Number(countData.count || 0);
                 var batchLimit = Number(countData.batch_limit || EXPORT_BATCH_LIMIT);
                 if (!articleCount) throw new Error('该时间范围内没有可导出的文章');
+                // 暂停超过 100 篇时的提示和终止逻辑，允许继续生成下载；保留便于以后恢复。
+                /*
                 if (articleCount > batchLimit) {
                     rangeResult.textContent = '当前范围有 ' + articleCount + ' 篇可导出文章，超过单次建议上限 ' + batchLimit + ' 篇。请使用自定义日期缩小范围，分批导出。';
                     showToast('当前有 ' + articleCount + ' 篇，请分批导出', 7000);
                     return;
                 }
+                */
                 rangeResult.textContent = '当前范围有 ' + articleCount + ' 篇可导出文章，正在生成文件…';
                 showToast('共 ' + articleCount + ' 篇，正在生成文件…', 6000);
                 window.location.href = url;  // 附件下载：Content-Disposition 触发下载，不跳转页面

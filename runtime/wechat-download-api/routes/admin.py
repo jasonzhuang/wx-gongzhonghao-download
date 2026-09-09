@@ -278,7 +278,7 @@ class FetchHistoryRequest(BaseModel):
     count: int = Field(1, ge=1, le=100, description="获取数量，1-100篇")
     until: int = Field(0, ge=0, description="可选：抓取到该时间戳为止，0表示按数量获取")
     before: int = Field(0, ge=0, description="可选：时间范围终点，0表示当前时间")
-    max_articles: int = Field(0, ge=0, le=1000, description="可选：范围文章超过该数量时只统计，不补抓正文")
+    max_articles: int = Field(0, ge=0, le=1000, description="预留的范围篇数阈值；当前仅返回标记，不阻断正文补抓")
 
 
 class FetchHistoryResponse(BaseModel):
@@ -341,11 +341,13 @@ async def fetch_history_articles(req: FetchHistoryRequest):
             req.fakeid, since=req.until, before=req.before or int(time.time())
         ) if req.until else 0
 
-        message = (
-            f"所选范围共 {matched_count} 篇，超过单次建议上限 {req.max_articles} 篇，请缩小时间范围分批导出"
-            if batch_required else
-            f"获取完成，共获取 {fetched_count} 篇，新增 {new_count} 篇"
-        )
+        # 暂停“超过 max_articles 提示分批导出”的提示逻辑，保留原代码便于恢复。
+        # message = (
+        #     f"所选范围共 {matched_count} 篇，超过单次建议上限 {req.max_articles} 篇，请缩小时间范围分批导出"
+        #     if batch_required else
+        #     f"获取完成，共获取 {fetched_count} 篇，新增 {new_count} 篇"
+        # )
+        message = f"获取完成，共获取 {fetched_count} 篇，新增 {new_count} 篇"
         
         return FetchHistoryResponse(
             success=True,
@@ -448,19 +450,21 @@ async def _fetch_history_internal(fakeid: str, target_count: int, until: int = 0
     # 先保存完整元数据，再只抓尚无正文的文章，避免每次范围扫描重复请求已有正文。
     new_count = rss_store.save_articles(fakeid, historical_articles, source="deep_fetch")
     batch_required = bool(max_articles and matched_count > max_articles)
-    if batch_required:
-        # 导出预检已经确认范围过大时，不继续抓正文或生成大文件；元数据仍保留，
-        # 用户缩小日期范围后无需担心列表漏项。
-        rss_store.update_history_cursor(
-            fakeid,
-            next_offset,
-            complete=next_offset is None or next_offset == offset,
-        )
-        return (
-            matched_count, new_count,
-            next_offset is not None and next_offset != offset,
-            matched_count, 0, oldest_time, newest_time, 0, True,
-        )
+    # 暂停“超过 max_articles 只统计、不补抓正文”的阻断逻辑，允许继续全量补抓。
+    # 保留原代码便于以后恢复 100 篇软限制。
+    # if batch_required:
+    #     # 导出预检已经确认范围过大时，不继续抓正文或生成大文件；元数据仍保留，
+    #     # 用户缩小日期范围后无需担心列表漏项。
+    #     rss_store.update_history_cursor(
+    #         fakeid,
+    #         next_offset,
+    #         complete=next_offset is None or next_offset == offset,
+    #     )
+    #     return (
+    #         matched_count, new_count,
+    #         next_offset is not None and next_offset != offset,
+    #         matched_count, 0, oldest_time, newest_time, 0, True,
+    #     )
     existing = rss_store.get_export_articles(
         fakeid, since=until, before=before or int(time.time()), limit=3000
     )

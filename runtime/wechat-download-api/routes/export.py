@@ -44,7 +44,7 @@ router = APIRouter()
 MAX_EXPORT = 3000       # md/html/xlsx/json 单次上限（纯读库，可放宽）
 MAX_EXPORT_DOC = 500    # Word/EPUB 上限：要现抓图内嵌，保守些
 MAX_EXPORT_PDF = 200    # PDF 上限：xhtml2pdf 纯 Python 渲染最慢，压最狠
-RECOMMENDED_EXPORT_BATCH = 100  # 前端超过此篇数时提示按时间范围分批导出
+RECOMMENDED_EXPORT_BATCH = 100  # 预留软限制；前端阻断/提示目前已注释，保留便于恢复
 
 
 def _cn_date(pt: int) -> str:
@@ -81,7 +81,7 @@ async def count_account_export(
     since: int = Query(0, ge=0, description="时间窗起点（秒级时间戳，0 表示不限）"),
     before: int = Query(0, ge=0, description="时间窗终点（秒级时间戳，0 表示不限）"),
 ):
-    """只读本地数据库，供下载前预检篇数和分批提示。"""
+    """只读本地数据库，供下载前预检篇数；分批标记暂保留但不阻断下载。"""
     _validate_time_range(since, before)
     sub = rss_store.get_subscription(fakeid)
     if not sub:
