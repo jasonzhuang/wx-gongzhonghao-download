@@ -1,80 +1,89 @@
-# DEPLOY — 微信读书链路安装手册
+# 部署
 
-## 1. 部署前检查
+当前服务通过微信读书 Web 读取公众号书架、文章列表和正文。它依赖非公开接口，适合个人或内部部署，不要直接暴露到公网：除可选的 `/mcp` 外，管理页、RSS 和导出接口没有统一鉴权。
 
-检查操作系统/架构、Python 3.10+、Docker、5000/5001 端口和网络。
-macOS AirPlay 常占 5000，直接改 5001。先运行：
+## 前提
+
+- Python 3.10+ 或 Docker；
+- 一个可登录微信读书的微信账号；
+- 已在微信读书 App 中关注至少一个目标公众号；
+- 首次配置时，能在浏览器开发者工具中复制成功的 `/web/mp/articles` 请求为完整 cURL。
+
+Cookie、`x-wr-ticket` 和 `x-wrpa-0` 都是敏感凭证，只能输入本机登录页，不要粘贴到聊天、Issue 或日志中。
+
+## 检查并解压源码
+
+在技能目录先检查捆绑包：
 
 ```bash
 python3 scripts/self_test.py
 ```
 
-用户必须已经：
-
-- 能登录 `https://weread.qq.com`；
-- 在微信读书 App 关注至少一个公众号；
-- 接受从浏览器开发者工具复制完整 Cookie 到本机服务。
-
-## 2. 解压源码
-
-建议工作目录：macOS/Linux `~/wechat-mp-rss/`，Windows
-`%USERPROFILE%\wechat-mp-rss\`。
+然后解压到独立工作目录：
 
 ```bash
+mkdir -p <工作目录>
 tar -xzf assets/wechat-download-api-src.tar.gz -C <工作目录>
 cd <工作目录>/wechat-download-api
 cp env.example .env
 ```
 
-按实际端口修改 `.env` 的 `PORT` 与 `SITE_URL`。默认已经设置：
+至少核对 `.env` 中的：
 
 ```dotenv
+SITE_URL=http://localhost:5000
+PORT=5000
 RSS_POLL_INTERVAL=7200
-RSS_CONTENT_CONCURRENCY=2
+ARTICLES_PER_POLL=10
 RSS_FETCH_FULL_CONTENT=true
+RSS_CONTENT_CONCURRENCY=2
 ```
 
-## 3A. Docker
+`SITE_URL` 必须是浏览器或 RSS 阅读器实际访问的服务根地址，否则图片代理和生成的 RSS 链接会错误。
 
-不要使用上游 `latest` 镜像，它可能仍是旧 `appmsgpublish` 链路。捆绑源码的
-`docker-compose.yml` 已经固定为本地构建：
+## Docker
 
-```yaml
-services:
-  wechat-api:
-    build: .
-    container_name: wechat-mp-rss
-    restart: unless-stopped
-    ports:
-      - "5001:5000"
-    volumes:
-      - ./data:/app/data
-      - ./.env:/app/.env:ro
-    environment:
-      - TZ=Asia/Shanghai
-```
-
-启动：
+必须用当前捆绑源码本地构建，不要拉取可能仍使用旧文章链路的上游 `latest` 镜像：
 
 ```bash
 docker compose build
 docker compose up -d
 docker compose ps
+docker compose logs -f wechat-api
 ```
 
-凭证写入 `data/.weread_credentials.json`，不写只读 `.env`。
+仓库当前的 Compose 映射为 `5000:5000`。若 macOS 的 5000 端口被 AirPlay 占用，应把 Compose 改为：
 
-## 3B. 原生 Python
+```yaml
+ports:
+  - "5001:5000"
+```
 
-联网安装：
+同时把 `.env` 的 `SITE_URL` 改成 `http://localhost:5001`。容器内端口仍是 5000，不要只改 `.env` 的 `PORT`；Dockerfile 的启动命令固定监听 5000。
+
+`./data` 会挂载到容器内 `/app/data`，数据库和登录凭证都在其中持久化。
+
+## 原生 Python
+
+macOS/Linux：
 
 ```bash
-bash start.sh
+python3 -m venv venv
+./venv/bin/pip install -r requirements.txt
+./venv/bin/python app.py
 ```
 
-Windows 在源码目录执行 `start.bat`。PyPI 较慢时可配置清华或阿里镜像。
+Windows：
 
-完全离线安装要求 Python 3.12。根据平台组合 `assets/wheels/any` 与对应目录：
+```bat
+py -m venv venv
+venv\Scripts\pip install -r requirements.txt
+venv\Scripts\python app.py
+```
+
+源码也提供 `start.sh` 和 `start.bat`。Linux 上以 root 运行 `start.sh` 会创建服务用户和 systemd 服务；不需要这些系统级改动时，使用上面的显式命令。
+
+完全离线安装要求 Python 3.12。依次指定 `assets/wheels/any` 和当前平台目录：
 
 - Windows x64：`win_amd64-cp312`
 - Apple Silicon：`macosx_arm64-cp312`
@@ -88,35 +97,34 @@ python3.12 -m venv venv
   --find-links <技能目录>/assets/wheels/any \
   --find-links <技能目录>/assets/wheels/macosx_arm64-cp312 \
   -r requirements.txt
-./venv/bin/python app.py
 ```
 
-## 4. 配置认证
+依赖安装完成后仍用 `./venv/bin/python app.py` 启动服务。
 
-1. 浏览器打开 `weread.qq.com` 并扫码登录。
-2. 打开开发者工具 Network。
-3. 打开任一微信读书公众号文章列表。
-4. 找到 `/web/mp/articles` 请求。
-5. 在该请求上选择 “Copy as cURL”，复制完整 cURL，而不是只复制 Cookie。
-6. 打开 `<BASE>/login.html`，只在本机页面粘贴并校验；服务会提取 Cookie
-   以及请求中已有的 `x-wr-ticket` 或 `x-wrpa-0`，并尝试通过 renewal 续期。
+## 配置登录
 
-扫码入口只负责刷新普通 Web Cookie；只有本机已有同账号文章列表票据时才会
-尝试复用。首次配置不能依赖扫码自动生成票据。
+1. 打开 `<BASE>/login.html`。
+2. 浏览器登录 `https://weread.qq.com`，打开任一公众号文章列表。
+3. 在 Network 中找到成功的 `/web/mp/articles` 请求，选择“Copy as cURL”。
+4. 把完整 cURL 只粘贴到本机登录页，点击“校验并保存”。
 
-不要让用户把凭证发进聊天。登录页只有在线校验成功才会写盘。
+服务会提取 Cookie 和已有的 `x-wr-ticket` 或 `x-wrpa-0`，尝试续期，并在书架与文章列表两级在线校验通过后写入 `data/.weread_credentials.json`。扫码入口主要用于刷新普通 Cookie；首次配置或出现 `-2041` 时不能依赖扫码生成文章列表票据。
 
-## 5. 验证
+## 验收
+
+从技能目录执行只读体检，`--base` 使用实际地址：
 
 ```bash
-python3 scripts/verify_service.py --base http://127.0.0.1:5001
+python3 scripts/verify_service.py --base http://127.0.0.1:5000
 ```
 
-然后在 RSS 页面添加一个书架公众号，只触发一次轮询：
+再打开 `<BASE>/rss.html`，添加一个书架公众号并只手动轮询一次。完整验收应同时满足：
 
-```bash
-curl -X POST http://127.0.0.1:5001/api/rss/poll
-```
+- `/api/health` 返回 `status=healthy`；
+- `/api/login/check` 返回 `success=true`；
+- 至少发现一个 `MP_WXS_` 公众号；
+- 轮询结果中 `failed=0`、`content_failed=0`；
+- 订阅的 `article_count>0`、`export_count>0`；
+- `/api/rss/all` 已包含文章条目。
 
-成功响应必须同时满足 `failed=0`、`content_failed=0`，且订阅列表中
-`article_count` 和 `export_count` 都大于 0。
+`verify_service.py` 退出码：0 表示服务和在线认证正常，2 表示凭证或在线校验异常，3 表示服务不可达。它不会代替订阅和手动轮询验收。
