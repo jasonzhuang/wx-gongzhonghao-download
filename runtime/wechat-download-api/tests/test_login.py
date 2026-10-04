@@ -149,12 +149,16 @@ class QrRenewalHeaderTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch("routes.login.logger.warning"),
             patch("routes.login.auth_manager.get_credentials", return_value=None),
-            self.assertRaisesRegex(RuntimeError, "没有可验证的公众号文章列表票据"),
+            self.assertRaisesRegex(RuntimeError, "尚未完成公众号文章列表登录") as raised,
         ):
             await _finish_qr_login(
                 {"client": login_client},
                 {"webLoginVid": "123", "accessToken": "fresh-skey", "refreshToken": ""},
             )
+        message = str(raised.exception)
+        self.assertIn("请停止重复扫码", message)
+        self.assertIn("必须先使用“完整 cURL 导入”成功登录一次", message)
+        self.assertIn("微信读书凭证有效，发现 N 个公众号", message)
         self.assertFalse(any("/web/mp/articles" in url for url in login_client.get_urls))
         self.assertFalse(any("/web/shelf/sync" in url for url in login_client.get_urls))
 

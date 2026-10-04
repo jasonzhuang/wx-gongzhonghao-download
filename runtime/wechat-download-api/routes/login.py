@@ -220,10 +220,15 @@ async def _finish_qr_login(session: Dict, result: Dict) -> Dict:
             json.dumps(diagnostics, ensure_ascii=False, sort_keys=True),
         )
         raise RuntimeError(
-            "扫码已取得普通 Cookie，但当前没有可验证的公众号文章列表票据（x-wr-ticket/x-wrpa-0）；"
-            f"诊断码：{diag_code}；请把诊断码提供给开发者，不要提供 Cookie/token；"
-            "请在浏览器打开微信读书公众号文章列表，从 /web/mp/articles 请求复制完整 cURL，"
-            "并粘贴到本机登录页校验保存"
+            "扫码已取得普通 Cookie，但尚未完成公众号文章列表登录：当前没有可验证的"
+            " x-wr-ticket/x-wrpa-0。请停止重复扫码，必须先使用“完整 cURL 导入”成功登录一次："
+            "①在浏览器登录同一微信读书账号并打开书架中的公众号文章列表；"
+            "②在开发者工具 Network 中找到响应成功的 /web/mp/articles 请求，确认请求头包含"
+            " x-wr-ticket 或 x-wrpa-0，再选择 Copy as cURL；"
+            "③回到本机登录页，粘贴完整 cURL 并点击“校验并保存”，直到页面显示"
+            "“微信读书凭证有效，发现 N 个公众号”。成功一次后，后续扫码才可尝试刷新同账号"
+            " Cookie 和续期文章列表票据。完整 cURL、Cookie 和 token 只能输入本机登录页，"
+            f"不要提供给他人；诊断码：{diag_code}"
         )
     client = WereadClient(candidate)
     check = await client.check_auth()

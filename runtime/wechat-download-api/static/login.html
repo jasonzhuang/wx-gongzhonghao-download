@@ -21,17 +21,17 @@
   <p class="muted">文章列表已从公众号后台迁移到微信读书 Web。凭证只保存在本机 <code>data/.weread_credentials.json</code>。</p>
   <div class="warn">Cookie 属于登录凭证，请勿截图、上传或发到聊天中。扫码完成后，凭证只会保存在本机。</div>
 
-  <h2>扫码刷新 Cookie</h2>
-  <p class="muted">扫码可刷新普通 Web Cookie；如果本机已有同一账号的文章列表票据，服务会一并尝试续期。首次配置或遇到 <code>-2041</code> 时，请使用下方的 <code>/web/mp/articles</code> 完整 cURL。</p>
+  <h2>已有有效凭证后：扫码刷新 Cookie</h2>
+  <p class="muted">扫码不能完成首次登录，只能刷新普通 Web Cookie，并尝试续期本机已有的同账号文章列表票据。如果尚未通过完整 cURL 看到过一次“微信读书凭证有效，发现 N 个公众号”，请勿重复扫码，先完成下方的首次登录。</p>
   <div class="actions"><button id="qrStart" onclick="startQrLogin()">生成二维码</button><button id="qrCancel" onclick="cancelQrLogin()" style="display:none;background:#6b7280">取消</button></div>
   <div id="qrbox" class="qrbox"><img id="qrimage" alt="微信读书扫码登录二维码"><div id="qrstatus" class="qrhint">请使用微信扫码</div><div id="otpbox" style="display:none"><input id="otp" inputmode="numeric" maxlength="4" placeholder="扫码后输入微信显示的四位验证码"><button onclick="pollQr(true)">提交验证码</button></div></div>
 
-  <h2>配置文章列表凭证（推荐）</h2>
+  <h2>首次登录（必须成功一次）：导入完整 cURL</h2>
   <ol>
     <li>在微信读书 App 中关注目标公众号，使其出现在书架。</li>
-    <li>浏览器登录 <code>weread.qq.com</code>，打开任一公众号文章列表。</li>
-    <li>在开发者工具 Network 中找到 <code>/web/mp/articles</code> 请求，右键选择“Copy as cURL”。不要选择其他请求。</li>
-    <li>只在下面的本机表单中粘贴完整 cURL。服务会提取其中的 Cookie 和文章列表票据，在线校验成功后才保存。</li>
+    <li>浏览器登录与扫码相同的 <code>weread.qq.com</code> 账号，打开书架中的任一公众号文章列表。</li>
+    <li>在开发者工具 Network 中找到响应成功的 <code>/web/mp/articles</code> 请求，确认 Request Headers 包含 <code>x-wr-ticket</code> 或 <code>x-wrpa-0</code>，再右键选择“Copy as cURL”。不要选择其他请求。</li>
+    <li>只在下面的本机表单中粘贴完整 cURL，并点击“校验并保存”。看到“微信读书凭证有效，发现 N 个公众号”才表示首次登录完成。</li>
   </ol>
 
   <label for="curl">/web/mp/articles 完整 cURL</label>
