@@ -14,6 +14,7 @@
     #result{display:none;margin-top:16px;padding:10px 12px;border-radius:8px}.ok{display:block!important;background:#ecfdf5;color:#166534}.err{display:block!important;background:#fef2f2;color:#991b1b}
     .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.actions a{color:#1677ff}
     .qrbox{display:none;margin:18px 0 4px;text-align:center;border:1px solid #e5e7eb;border-radius:10px;padding:16px;background:#fafafa}.qrbox img{width:240px;height:240px;display:block;margin:0 auto 8px}.qrhint{color:#6b7280;font-size:13px}
+    .curl-help{margin-top:16px;border:1px solid #e5e7eb;border-radius:10px;padding:14px;background:#fafafa}.curl-help summary{cursor:pointer;color:#1677ff;font-weight:600}.curl-help p{margin:10px 0;color:#6b7280;font-size:13px}.curl-help img{display:block;width:100%;height:auto;margin-top:10px;border:1px solid #d1d5db;border-radius:8px}
   </style>
 </head>
 <body><main><div class="card">
@@ -30,12 +31,17 @@
   <ol>
     <li>在微信读书 App 中关注目标公众号，使其出现在书架。</li>
     <li>浏览器登录与扫码相同的 <code>weread.qq.com</code> 账号，打开书架中的任一公众号文章列表。</li>
-    <li>在开发者工具 Network 中找到响应成功的 <code>/web/mp/articles</code> 请求，确认 Request Headers 包含 <code>x-wr-ticket</code> 或 <code>x-wrpa-0</code>，再右键选择“Copy as cURL”。不要选择其他请求。</li>
+    <li>在开发者工具 Network 中找到响应成功的 <code>/web/mp/articles</code>再右键选择“Copy as cURL”。不要选择其他请求。</li>
     <li>只在下面的本机表单中粘贴完整 cURL，并点击“校验并保存”。看到“微信读书凭证有效，发现 N 个公众号”才表示首次登录完成。</li>
   </ol>
 
   <label for="curl">/web/mp/articles 完整 cURL</label>
   <textarea id="curl" autocomplete="off" spellcheck="false" placeholder="在 /web/mp/articles 请求上右键“Copy as cURL”后粘贴；仅本机处理，勿发到聊天中"></textarea>
+  <details class="curl-help">
+    <summary>不会复制？查看操作截图</summary>
+    <p>在浏览器开发者工具的 Network 面板中筛选 <code>articles</code>，选中成功的 <code>/web/mp/articles</code> 请求，右键选择“Copy” → “Copy as cURL”，然后粘贴到上面的输入框。</p>
+    <img src="/static/assets/weread-copy-as-curl.png" alt="在 Network 面板中选择 Copy as cURL">
+  </details>
 
   <div class="actions"><button id="save" onclick="saveCredentials()">校验并保存</button><a href="/admin.html">返回管理面板</a></div>
   <div id="result"></div>

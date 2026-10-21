@@ -31,6 +31,7 @@ class RSSPoller:
                 "message": "尚未执行轮询", "ok": 0, "failed": 0,
                 "fetched": 0, "saved": 0, "content_failed": 0, "errors": [],
             }
+            cls._instance._poll_lock = asyncio.Lock()
         return cls._instance
 
     async def start(self):
@@ -62,13 +63,13 @@ class RSSPoller:
     async def _loop(self):
         while self._running:
             try:
-                await self._poll_all()
+                await self.poll_now()
             except Exception as exc:
                 logger.error("RSS poll cycle fatal error: %s", exc, exc_info=True)
             await asyncio.sleep(POLL_INTERVAL)
 
-    async def _poll_all(self) -> Dict:
-        fakeids = rss_store.get_all_fakeids()
+    async def _poll_all(self, fakeids: Optional[List[str]] = None) -> Dict:
+        fakeids = list(fakeids) if fakeids is not None else rss_store.get_all_fakeids()
         result = {
             "ok": 0, "failed": 0, "fetched": 0, "saved": 0,
             "content_failed": 0, "errors": [], "message": "",
@@ -152,7 +153,13 @@ class RSSPoller:
         return list(enriched), errors
 
     async def poll_now(self) -> Dict:
-        return await self._poll_all()
+        async with self._poll_lock:
+            return await self._poll_all()
+
+    async def poll_subscription(self, fakeid: str) -> Dict:
+        """立即轮询单个已订阅公众号。"""
+        async with self._poll_lock:
+            return await self._poll_all([fakeid])
 
 
 rss_poller = RSSPoller()

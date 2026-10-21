@@ -10,6 +10,15 @@
                 <h2 style="font-size:var(--font-base);font-weight:600;">按篇下载 · <span id="articleDlNick"></span></h2>
                 <span style="cursor:pointer;color:var(--text-muted);font-size:20px;line-height:1;" onclick="closeArticleDownloads()">&times;</span>
             </div>
+            <div class="article-dl-poll">
+                <div class="article-dl-poll-title">按日期补抓文章</div>
+                <div class="article-dl-poll-row">
+                    <label>开始日期<input id="articleDlStartDate" type="date"></label>
+                    <label>结束日期<input id="articleDlEndDate" type="date"></label>
+                    <button class="article-dl-poll-btn" id="articleDlPollBtn" onclick="pollArticleDate()">按日期轮询</button>
+                </div>
+                <div id="articleDlPollResult" class="article-dl-poll-result">普通轮询每次最多获取 10 篇；指定日期后会继续扫描并补抓该范围内的文章。</div>
+            </div>
             <div id="articleDlList" style="font-size:var(--font-sm);color:var(--text-secondary);">加载中...</div>
         </div>
     </div>
@@ -547,6 +556,14 @@
         .article-dl-meta { color:var(--text-muted);font-size:11px;white-space:nowrap; }
         .article-dl-btn { padding:5px 10px;border:1px solid var(--primary-color);border-radius:6px;background:transparent;color:var(--primary-color);cursor:pointer;white-space:nowrap; }
         .article-dl-btn:disabled { border-color:var(--border-base);color:var(--text-muted);cursor:not-allowed; }
+        .article-dl-poll { padding:12px;background:var(--bg-secondary);border:1px solid var(--border-light);border-radius:var(--radius-base);margin-bottom:var(--space-md); }
+        .article-dl-poll-title { font-size:var(--font-xs);font-weight:600;color:var(--text-secondary);margin-bottom:8px; }
+        .article-dl-poll-row { display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap; }
+        .article-dl-poll-row label { display:flex;flex-direction:column;gap:4px;color:var(--text-muted);font-size:11px; }
+        .article-dl-poll-row input { padding:6px 8px;border:1px solid var(--border-base);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font:inherit; }
+        .article-dl-poll-btn { padding:7px 12px;border:1px solid var(--primary-color);border-radius:6px;background:var(--primary-color);color:#fff;cursor:pointer;white-space:nowrap; }
+        .article-dl-poll-btn:disabled { opacity:.6;cursor:not-allowed; }
+        .article-dl-poll-result { margin-top:8px;color:var(--text-muted);font-size:11px;line-height:1.5; }
     </style>
 
     <script>
@@ -620,6 +637,7 @@
                     });
                     html += '</select>';
                     html += '<button class="btn-copy" onclick="copyRss(\'' + escAttr(s.rss_url) + '\')">复制 RSS</button>';
+                    html += '<button class="btn-copy" style="background:#fff7ed;color:#c2410c;border-color:#fed7aa;" onclick="triggerSubscriptionPoll(\'' + escAttr(s.fakeid) + '\',\'' + escAttr(s.nickname || s.fakeid) + '\',this)">单独轮询</button>';
                     html += '<button class="btn-copy" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;" onclick="openDownload(\'' + escAttr(s.fakeid) + '\',\'' + escAttr(s.nickname || s.fakeid) + '\')">下载文章</button>';
                     html += '<button class="btn-copy" style="background:#f0fdf4;color:#15803d;border-color:#bbf7d0;" onclick="openArticleDownloads(\'' + escAttr(s.fakeid) + '\',\'' + escAttr(s.nickname || s.fakeid) + '\')">按篇下载</button>';
                     html += '<button class="btn-unsub" onclick="doUnsub(\'' + escAttr(s.fakeid) + '\')">取消</button>';
@@ -892,6 +910,41 @@
             }
         }
 
+        async function triggerSubscriptionPoll(fakeid, nickname, button) {
+            if (pollInProgress) return;
+            pollInProgress = true;
+            pollStartedAt = Date.now();
+            button.disabled = true;
+            button.textContent = '轮询中…';
+            button.setAttribute('aria-busy', 'true');
+            updatePollResult('running', '正在轮询「' + nickname + '」…', '已耗时 1 秒');
+            if (pollClock) clearInterval(pollClock);
+            pollClock = setInterval(function() {
+                updatePollResult('running', '正在轮询「' + nickname + '」…', '已耗时 ' + pollElapsed() + ' 秒');
+            }, 1000);
+            try {
+                var res = await fetch('/api/rss/poll/' + encodeURIComponent(fakeid), { method: 'POST' });
+                var d = await res.json();
+                var data = d.data || {};
+                var failed = Number(data.failed || 0);
+                var contentFailed = Number(data.content_failed || 0);
+                var detail = '耗时 ' + pollElapsed() + ' 秒 · 获取 ' + Number(data.fetched || 0) + ' 篇 · 保存 ' + Number(data.saved || 0) + ' 篇 · 正文失败 ' + contentFailed + ' 篇';
+                var kind = d.success ? 'success' : (failed || contentFailed ? 'warning' : 'error');
+                updatePollResult(kind, data.message || (d.success ? '单独轮询已完成' : '单独轮询失败'), detail);
+                showToast(data.message || (d.success ? '单独轮询已完成' : '单独轮询失败'), 5000);
+                await Promise.all([loadSubscriptions(), loadStatus()]);
+            } catch (e) {
+                updatePollResult('error', '单独轮询失败', '耗时 ' + pollElapsed() + ' 秒 · ' + e.message);
+                showToast('单独轮询失败: ' + e.message, 5000);
+            } finally {
+                if (pollClock) { clearInterval(pollClock); pollClock = null; }
+                pollInProgress = false;
+                button.disabled = false;
+                button.textContent = '单独轮询';
+                button.setAttribute('aria-busy', 'false');
+            }
+        }
+
         function escHtml(s) {
             var d = document.createElement('div');
             d.textContent = s;
@@ -936,22 +989,79 @@
             document.getElementById('dlMask').style.display = 'none';
         }
 
+        var articleDlState = { fakeid: '', since: 0, before: 0 };
+
         async function openArticleDownloads(fakeid, nickname) {
             var mask = document.getElementById('articleDlMask');
-            var list = document.getElementById('articleDlList');
             document.getElementById('articleDlNick').textContent = nickname;
-            list.innerHTML = '加载中...'; mask.style.display = 'block';
+            articleDlState.fakeid = fakeid;
+            document.getElementById('articleDlStartDate').value = '';
+            document.getElementById('articleDlEndDate').value = '';
+            articleDlState.since = 0;
+            articleDlState.before = 0;
+            document.getElementById('articleDlPollResult').textContent = '普通轮询每次最多获取 10 篇；指定日期后会继续扫描并补抓该范围内的文章。';
+            document.getElementById('articleDlList').innerHTML = '加载中...';
+            mask.style.display = 'block';
+            await loadArticleDownloads();
+        }
+
+        async function loadArticleDownloads() {
+            var list = document.getElementById('articleDlList');
             try {
-                var res = await fetch('/api/feed/articles.json?fakeid=' + encodeURIComponent(fakeid) + '&limit=200');
+                var res = await fetch('/api/feed/articles.json?fakeid=' + encodeURIComponent(articleDlState.fakeid) + '&limit=200&order=desc');
                 var data = await res.json();
-                var articles = data.articles || [];
-                if (!articles.length) { list.innerHTML = '<div style="padding:16px 0;">暂无已抓取文章，请先点击“立即轮询”。</div>'; return; }
-                list.innerHTML = articles.map(function(a) {
+                var articles = (data.articles || []).filter(function(a) {
+                    return (!articleDlState.since || a.publish_time >= articleDlState.since) &&
+                        (!articleDlState.before || a.publish_time <= articleDlState.before);
+                });
+                if (!articles.length) { list.innerHTML = '<div style="padding:16px 0;">当前日期范围暂无文章，请先按日期轮询。</div>'; return; }
+                list.innerHTML = '<div style="padding:0 0 8px;color:var(--text-muted);font-size:11px;">当前日期范围共 ' + articles.length + ' 篇</div>' + articles.map(function(a) {
                     var date = a.publish_time ? new Date(a.publish_time * 1000).toLocaleString('zh-CN') : '';
                     var btn = a.content_fetched ? '<button class="article-dl-btn" onclick="window.location.href=\'/api/feed/article/' + a.id + '.md\'">Markdown</button><button class="article-dl-btn" onclick="window.location.href=\'/api/feed/article/' + a.id + '.html\'">HTML</button>' : '<button class="article-dl-btn" disabled>正文未完成</button>';
                     return '<div class="article-dl-row"><div class="article-dl-title" title="' + escAttr(a.title || '') + '">' + escHtml(a.title || '(无标题)') + '</div><div class="article-dl-meta">' + date + '</div>' + btn + '</div>';
                 }).join('');
             } catch (e) { list.innerHTML = '<div style="padding:16px 0;color:var(--error-color);">加载失败：' + escHtml(e.message) + '</div>'; }
+        }
+
+        async function pollArticleDate() {
+            var startValue = document.getElementById('articleDlStartDate').value;
+            var endValue = document.getElementById('articleDlEndDate').value;
+            var result = document.getElementById('articleDlPollResult');
+            var button = document.getElementById('articleDlPollBtn');
+            if (!startValue || !endValue) { result.textContent = '请选择开始日期和结束日期。'; return; }
+            var start = new Date(startValue + 'T00:00:00');
+            var end = new Date(endValue + 'T23:59:59');
+            var now = Date.now();
+            if (isNaN(start.getTime()) || isNaN(end.getTime())) { result.textContent = '日期格式无效。'; return; }
+            if (start.getTime() > end.getTime()) { result.textContent = '开始日期不能晚于结束日期。'; return; }
+            if (start.getTime() > now) { result.textContent = '开始日期不能晚于今天。'; return; }
+            articleDlState.since = Math.floor(start.getTime() / 1000);
+            articleDlState.before = Math.min(Math.floor(end.getTime() / 1000), Math.floor(now / 1000));
+            button.disabled = true;
+            button.textContent = '轮询中…';
+            result.textContent = '正在扫描该日期范围并补抓正文，请稍候…';
+            try {
+                var res = await fetch('/api/admin/history/fetch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fakeid: articleDlState.fakeid,
+                        count: 100,
+                        until: articleDlState.since,
+                        before: articleDlState.before,
+                        max_articles: 100
+                    })
+                });
+                var data = await res.json();
+                if (!data.success) throw new Error(data.message || '日期轮询失败');
+                result.textContent = data.message + '，正文成功 ' + Number(data.content_count || 0) + ' 篇，正文失败 ' + Number(data.content_failed_count || 0) + ' 篇。';
+                await loadArticleDownloads();
+            } catch (e) {
+                result.textContent = '日期轮询失败：' + e.message;
+            } finally {
+                button.disabled = false;
+                button.textContent = '按日期轮询';
+            }
         }
 
         function closeArticleDownloads(e) { document.getElementById('articleDlMask').style.display = 'none'; }

@@ -14,7 +14,7 @@ Feed 路由 - 本地已抓取文章的元数据列表 + 单篇 markdown 导出
 
 import os
 import logging
-from typing import Optional
+from typing import Literal, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, Request, HTTPException, Query
@@ -40,16 +40,23 @@ async def feed_articles(
     since: int = Query(0, ge=0, description="Unix 时间戳，返回 publish_time > since 的文章；首次传 0"),
     fakeid: Optional[str] = Query(None, description="可选，筛选单个公众号"),
     limit: int = Query(50, ge=1, le=200, description="单次返回条数（1-200）"),
+    order: Literal["asc", "desc"] = Query("asc", description="发布时间排序；默认 asc 供增量同步，desc 供最新文章展示"),
 ):
     """
-    按 publish_time 正序、游标分页返回本地已抓取的文章元数据（不含正文）。
+    默认按 publish_time 正序、游标分页返回本地已抓取的文章元数据（不含正文）。
+    `order=desc` 时优先返回最新文章，适合“按篇下载”等展示场景。
     拿到 `id` 后配合 `/api/feed/article/{id}.md` 下载 markdown 正文。
 
-    每次响应含 `next_since`（本批最后一篇的 publish_time），作为下次 `since`，
+    每次响应含 `next_since`（本批最大的 publish_time），作为下次 `since`，
     循环调用直到 `articles` 为空即拉完；之后用保存的 `next_since` 做每日增量。
     """
     base = _base_url(request)
-    rows = rss_store.get_feed_articles(since=since, fakeid=fakeid, limit=limit)
+    rows = rss_store.get_feed_articles(
+        since=since,
+        fakeid=fakeid,
+        limit=limit,
+        descending=order == "desc",
+    )
     subs = {s["fakeid"]: s.get("nickname", "") for s in rss_store.list_subscriptions()}
 
     items = []
@@ -67,7 +74,7 @@ async def feed_articles(
             "content_fetched": bool(a.get("content")),
         })
 
-    next_since = items[-1]["publish_time"] if items else since
+    next_since = max((item["publish_time"] for item in items), default=since)
     return {"articles": items, "next_since": next_since}
 
 

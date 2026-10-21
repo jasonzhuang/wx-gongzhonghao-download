@@ -76,7 +76,7 @@ HTTP 200 不代表业务成功。完整成功要求响应的 `success=true`，�
 
 单篇下载和程序化增量同步：
 
-- `GET /api/feed/articles.json?since=0&limit=50`：按发布时间正序返回元数据和 `next_since`，单次最多 200 条；
+- `GET /api/feed/articles.json?since=0&limit=50`：默认按发布时间正序返回元数据和 `next_since`，单次最多 200 条；传 `order=desc` 时优先返回最新文章，供展示或按篇下载；
 - `GET /api/feed/article/{id}.md`：带 YAML frontmatter 的 Markdown；
 - `GET /api/feed/article/{id}.html`：单篇 HTML；
 - 正文尚未抓取时，单篇下载返回 422。

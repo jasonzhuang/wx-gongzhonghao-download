@@ -279,6 +279,32 @@ async def trigger_poll():
         )
 
 
+@router.post("/rss/poll/{fakeid}", response_model=PollerStatusResponse,
+             summary="手动轮询单个订阅")
+async def trigger_subscription_poll(fakeid: str):
+    """手动触发单个已订阅公众号的轮询，不影响其他订阅。"""
+    subscription = rss_store.get_subscription(fakeid)
+    if not subscription:
+        return PollerStatusResponse(
+            success=False,
+            data={"message": "未找到该订阅"},
+        )
+    if not rss_poller.is_running:
+        return PollerStatusResponse(
+            success=False,
+            data={"message": "轮询器未启动"},
+        )
+    try:
+        result = await rss_poller.poll_subscription(fakeid)
+        success = result.get("failed", 0) == 0 and result.get("content_failed", 0) == 0
+        return PollerStatusResponse(success=success, data=result)
+    except Exception as exc:
+        return PollerStatusResponse(
+            success=False,
+            data={"message": f"轮询出错: {str(exc)}"},
+        )
+
+
 @router.get("/rss/status", response_model=PollerStatusResponse,
             summary="轮询器状态")
 async def poller_status():

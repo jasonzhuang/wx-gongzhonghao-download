@@ -501,10 +501,10 @@ def count_export_articles(fakeid: str, since: int = 0, before: int = 0) -> int:
 
 
 def get_feed_articles(since: int = 0, fakeid: Optional[str] = None,
-                      limit: int = 50) -> List[Dict]:
+                      limit: int = 50, descending: bool = False) -> List[Dict]:
     """
-    按 publish_time 正序 + 增量游标返回本地已抓取文章（含 id），供 feed 同步用。
-    客户端保存上次返回的最后一篇 publish_time 作为下次 since，循环拉到空为止。
+    返回本地已抓取文章（含 id）。默认按 publish_time 正序，供增量同步；
+    descending=True 时按时间倒序，供“按篇下载”等需要优先展示新文章的场景。
     """
     conn = _get_conn()
     try:
@@ -513,7 +513,8 @@ def get_feed_articles(since: int = 0, fakeid: Optional[str] = None,
         if fakeid:
             sql += " AND fakeid=?"
             params.append(fakeid)
-        sql += " ORDER BY publish_time ASC LIMIT ?"
+        order = "DESC" if descending else "ASC"
+        sql += f" ORDER BY publish_time {order}, id {order} LIMIT ?"
         params.append(limit)
         rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
